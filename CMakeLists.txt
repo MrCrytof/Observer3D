@@ -12,10 +12,25 @@ set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
+        glm
+        GIT_REPOSITORY https://github.com/g-truc/glm.git
+        GIT_TAG 1.0.1
+)
+FetchContent_MakeAvailable(glm)
+
+FetchContent_Declare(
         glfw
         GIT_REPOSITORY https://github.com/glfw/glfw.git
         GIT_TAG 3.4
 )
+
+FetchContent_Declare(
+        cglm
+        GIT_REPOSITORY https://github.com/recp/cglm.git
+        GIT_TAG v0.9.1
+)
+FetchContent_MakeAvailable(cglm)
+
 FetchContent_MakeAvailable(glfw)
 
 # Створюємо виконуваний файл
@@ -29,4 +44,6 @@ target_link_libraries(My_Prog
         PRIVATE
         glfw
         opengl32 # Потрібно для Windows, щоб бачити функції OpenGL
+        glm::glm
+        cglm
 )
