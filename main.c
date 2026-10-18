@@ -230,6 +230,18 @@ int main(void)
          0.5f, -0.5f,  0.5f, 0, 1, 1
     };
 
+    // Вершини платформи: великий квадрат на площині XZ
+    float floorVertices[] = {
+        -10.0f, 0.0f, -10.0f,   0.5f, 0.5f, 0.5f,
+         10.0f, 0.0f, -10.0f,   0.5f, 0.5f, 0.5f,
+         10.0f, 0.0f,  10.0f,   0.5f, 0.5f, 0.5f,
+
+        -10.0f, 0.0f, -10.0f,   0.5f, 0.5f, 0.5f,
+         10.0f, 0.0f,  10.0f,   0.5f, 0.5f, 0.5f,
+        -10.0f, 0.0f,  10.0f,   0.5f, 0.5f, 0.5f
+
+    };
+
     // Рядок вихідного коду вершинного шейдера (обробляє позиції та матрицю MVP)
     const char* vertexShaderSource =
         "#version 330 core\n"
@@ -295,7 +307,23 @@ int main(void)
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
-    // Відв'язуємо VAO для безпеки
+    // Створюємо окремі буфери для платформи
+    unsigned int floorVAO, floorVBO;
+    glGenVertexArrays(1, &floorVAO);
+    glGenBuffers(1, &floorVBO);
+
+    glBindVertexArray(floorVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, floorVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(floorVertices), floorVertices, GL_STATIC_DRAW);
+
+    // Атрибут 0: координати (X, Y, Z)
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // Атрибут 1: колір (R, G, B)
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
     glBindVertexArray(0);
 
     // Оголошуємо матриці для тривимірних перетворень
@@ -332,7 +360,12 @@ int main(void)
 
         // Налаштовуємо матрицю моделі (розміщуємо об'єкт у світі та обертаємо його з часом навколо осі Y)
         glm_mat4_identity(model);
+        // Поднимаємо куб на половину його висоти
+        glm_translate(model, (vec3){0.0f, 0.5f, 0.0f});
         glm_rotate(model, (float)glfwGetTime(), (vec3){0.0f, 1.0f, 0.0f});
+
+        mat4 floorModel;
+        glm_mat4_identity(floorModel);
 
         // Формуємо матрицю огляду камери (view) за допомогою функції glm_lookat
         vec3 target;
@@ -346,7 +379,21 @@ int main(void)
         // Активуємо нашу шейдерну програму
         glUseProgram(shaderProgram);
         // Передаємо пораховану MVP матрицю у вершинний шейдер
+        mat4 floorViewModel;
+        mat4 floorMvp;
+
+        glm_mat4_mul(view, floorModel, floorViewModel);
+        glm_mat4_mul(projection, floorViewModel, floorMvp);
+
+        glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, (float*)floorMvp);
+
+        glBindVertexArray(floorVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
         glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, (float*)mvp);
+
+        glBindVertexArray(VAO);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
 
         // Активуємо VAO куба
         glBindVertexArray(VAO);
