@@ -30,20 +30,38 @@ FetchContent_Declare(
         GIT_TAG v0.9.1
 )
 FetchContent_MakeAvailable(cglm)
-
 FetchContent_MakeAvailable(glfw)
 
-# Створюємо виконуваний файл
-add_executable(My_Prog main.c src/glad.c)
+# Створюємо список наших вихідних файлів модулів
+set(SOURCES
+        main.c
+        src/glad.c
+        src/camera.c
+        src/renderer.c
+        src/physics.c
+        src/rigid_body.c
+        src/camera.c
+        include/rigid_body.h
+        src/rigid_body.c
+        include/renderer.h
+        src/renderer.c
+        include/physics.h
+        src/physics.c
+        include/collision.h
+        src/collision.c
+)
 
-# Вказуємо нашої папки include для GLAD (якщо вона у тебе в проєкті в папці include)
+# Створюємо виконуваний файл із нашими модулями
+add_executable(My_Prog ${SOURCES})
+
+# Вказуємо шлях до заголовочних файлів (.h)
 target_include_directories(My_Prog PRIVATE include)
 
 # Підключаємо бібліотеки до нашого проєкту
 target_link_libraries(My_Prog
         PRIVATE
         glfw
-        opengl32 # Потрібно для Windows, щоб бачити функції OpenGL
+        opengl32
         glm::glm
         cglm
 )
