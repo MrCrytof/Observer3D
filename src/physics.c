@@ -1,127 +1,78 @@
 #include "physics.h"
-#include "rigid_body.h"
-#include "collision.h"
-#include <cglm/cglm.h>
+#include <string.h>
 
-#define MAX_CONTACTS 256
+void physics_init(void) {
+    rigid_body_init_system();
+    collider_init_system();
+}
 
 void physics_update(float deltaTime, float gravity) {
-    // 1. Применяем гравитацию и сбрасываем силы
-    for (int i = 0; i < cubeCount; i++) {
-        if (!cubes[i].active) continue;
-
-        vec3 gravityForce = {0.0f, -cubes[i].mass * gravity, 0.0f};
-        glm_vec3_copy(gravityForce, cubes[i].force);
-        glm_vec3_zero(cubes[i].torque);
+    // 1. Оновлення світових тензорів інерції для всіх активних тіл
+    for (int i = 0; i < bodyCount; i++) {
+        if (!bodies[i].active) continue;
+        rigid_body_update_world_inertia(&bodies[i]);
     }
 
-    // 2. Ищем все контакты через отдельный модуль коллизий
-    Contact contacts[MAX_CONTACTS];
-    int contactCount = collision_detect_boxes(contacts, MAX_CONTACTS);
+    // 2. Застосування сил (гравітація) та скидання моментів
+    for (int i = 0; i < bodyCount; i++) {
+        RigidBody *b = &bodies[i];
+        if (!b->active || b->type == BODY_TYPE_STATIC) continue;
 
-    // 3. Обрабатываем контакты (решатель сил и трения)
-    for (int c = 0; c < contactCount; c++) {
-        int a = contacts[c].bodyA;
-        int b = contacts[c].bodyB;
-
-        vec3 rA;
-        glm_vec3_sub(contacts[c].point, cubes[a].position, rA);
-
-        vec3 pointVelA, omegaCrossRA;
-        glm_cross(cubes[a].angularVelocity, rA, omegaCrossRA);
-        glm_vec3_add(cubes[a].velocity, omegaCrossRA, pointVelA);
-
-        vec3 pointVelB = {0.0f, 0.0f, 0.0f};
-        if (b != -1) {
-            vec3 rB;
-            glm_vec3_sub(contacts[c].point, cubes[b].position, rB);
-            vec3 omegaCrossRB;
-            glm_cross(cubes[b].angularVelocity, rB, omegaCrossRB);
-            glm_vec3_add(cubes[b].velocity, omegaCrossRB, pointVelB);
-        }
-
-        // Относительная скорость в точке контакта
-        vec3 relativeVel;
-        glm_vec3_sub(pointVelA, pointVelB, relativeVel);
-
-        float normalVel = glm_vec3_dot(relativeVel, contacts[c].normal);
-
-        // Сила упругости (Spring + Damping)
-        float springK = 500.0f;
-        float dampingK = 30.0f;
-
-        vec3 normalForce;
-        float normalMagnitude = (contacts[c].penetration * springK) - (normalVel * dampingK);
-        if (normalMagnitude < 0.0f) normalMagnitude = 0.0f;
-
-        glm_vec3_scale(contacts[c].normal, normalMagnitude, normalForce);
-
-        // Применяем силы и моменты для тела A
-        glm_vec3_add(cubes[a].force, normalForce, cubes[a].force);
-        vec3 torqueA;
-        glm_cross(rA, normalForce, torqueA);
-        glm_vec3_add(cubes[a].torque, torqueA, cubes[a].torque);
-
-        // Трение в плоскости контакта
-        vec3 tangentVel;
-        vec3 normalComponent;
-        glm_vec3_scale(contacts[c].normal, normalVel, normalComponent);
-        glm_vec3_sub(relativeVel, normalComponent, tangentVel);
-
-        vec3 frictionForce;
-        glm_vec3_scale(tangentVel, -15.0f, frictionForce);
-        glm_vec3_add(cubes[a].force, frictionForce, cubes[a].force);
-
-        vec3 frictionTorque;
-        glm_cross(rA, frictionForce, frictionTorque);
-        glm_vec3_add(cubes[a].torque, frictionTorque, cubes[a].torque);
-
-        // Если второе тело — это другой куб (не платформа), передаем силу и ему по третьему закону Ньютона
-        if (b != -1) {
-            vec3 forceB;
-            glm_vec3_scale(normalForce, -1.0f, forceB);
-            glm_vec3_add(cubes[b].force, forceB, cubes[b].force);
-
-            vec3 rB;
-            glm_vec3_sub(contacts[c].point, cubes[b].position, rB);
-            vec3 torqueB;
-            glm_cross(rB, forceB, torqueB);
-            glm_vec3_add(cubes[b].torque, torqueB, cubes[b].torque);
-        }
+        vec3 gravityForce = {0.0f, -b->mass * gravity, 0.0f};
+        glm_vec3_copy(gravityForce, b->force);
+        glm_vec3_zero(b->torque);
     }
 
-    // 4. Интегрирование движения для всех активных тел
-    for (int i = 0; i < cubeCount; i++) {
-        if (!cubes[i].active) continue;
+    // 3. Широка фаза (Broad Phase): пошук потенційних пар
+    PotentialPair pairs[MAX_PAIRS];
+    int pairCount = broadphase_collect_pairs(pairs, MAX_PAIRS);
 
-        // Линейное интегрирование
+    // 4. Вузька фаза (Narrow Phase): генерація контактних маніфолдів
+    collision_detect_all(pairs, pairCount);
+
+    // 5. Вирішення контактів (Contact Solver): імпульси та тертя
+    contact_solver_solve(manifolds, manifoldCount, deltaTime);
+
+    // 6. Інтегрування рухів (Semi-Implicit Euler)
+    for (int i = 0; i < bodyCount; i++) {
+        RigidBody *b = &bodies[i];
+        if (!b->active || b->type == BODY_TYPE_STATIC) continue;
+
+        // Лінійне інтегрування
         vec3 acceleration;
-        glm_vec3_scale(cubes[i].force, cubes[i].invMass, acceleration);
+        glm_vec3_scale(b->force, b->invMass, acceleration);
+
         vec3 deltaVel;
         glm_vec3_scale(acceleration, deltaTime, deltaVel);
-        glm_vec3_add(cubes[i].velocity, deltaVel, cubes[i].velocity);
+        glm_vec3_add(b->velocity, deltaVel, b->velocity);
 
         vec3 deltaPos;
-        glm_vec3_scale(cubes[i].velocity, deltaTime, deltaPos);
-        glm_vec3_add(cubes[i].position, deltaPos, cubes[i].position);
+        glm_vec3_scale(b->velocity, deltaTime, deltaPos);
+        glm_vec3_add(b->position, deltaPos, b->position);
 
-        // Угловое интегрирование
-        vec3 angularAcceleration;
-        glm_vec3_scale(cubes[i].torque, cubes[i].invMass, angularAcceleration);
+        // Углове інтегрування
+        vec3 angularAcc;
+        glm_mat3_mulv(b->invWorldInertiaTensor, b->torque, angularAcc);
+
         vec3 deltaAngVel;
-        glm_vec3_scale(angularAcceleration, deltaTime, deltaAngVel);
-        glm_vec3_add(cubes[i].angularVelocity, deltaAngVel, cubes[i].angularVelocity);
+        glm_vec3_scale(angularAcc, deltaTime, deltaAngVel);
+        glm_vec3_add(b->angularVelocity, deltaAngVel, b->angularVelocity);
 
-        float angle = glm_vec3_norm(cubes[i].angularVelocity) * deltaTime;
-        if (angle > 0.0001f) {
+        // Оновлення орієнтації через кватерніон
+        float angle = glm_vec3_norm(b->angularVelocity) * deltaTime;
+        if (angle > 0.00001f) {
             vec3 axis;
-            glm_vec3_copy(cubes[i].angularVelocity, axis);
+            glm_vec3_copy(b->angularVelocity, axis);
             glm_vec3_normalize(axis);
-            glm_rotate(cubes[i].orientation, angle, axis);
+
+            versor rotQuat;
+            glm_quatv(rotQuat, angle, axis);
+            glm_quat_mul(rotQuat, b->orientation, b->orientation);
+            glm_quat_normalize(b->orientation);
         }
 
-        // Общее аэродинамическое затухание
-        glm_vec3_scale(cubes[i].angularVelocity, 0.98f, cubes[i].angularVelocity);
-        glm_vec3_scale(cubes[i].velocity, 0.99f, cubes[i].velocity);
+        // Невелике загальне демпфування для стабільності
+        glm_vec3_scale(b->velocity, 0.995f, b->velocity);
+        glm_vec3_scale(b->angularVelocity, 0.99f, b->angularVelocity);
     }
 }

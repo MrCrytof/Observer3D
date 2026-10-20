@@ -49,6 +49,12 @@ set(SOURCES
         src/physics.c
         include/collision.h
         src/collision.c
+        include/collider.h
+        src/collider.c
+        include/broadphase.h
+        src/broadphase.c
+        include/contact_solver.h
+        src/contact_solver.c
 )
 
 # Створюємо виконуваний файл із нашими модулями

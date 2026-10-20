@@ -3,16 +3,35 @@
 
 #include <cglm/cglm.h>
 #include "rigid_body.h"
+#include "collider.h"
+#include "broadphase.h"
 
 typedef struct {
-    vec3 point;         // Точка контакта в мировых координатах
-    vec3 normal;        // Нормаль от первого ко второму телу
-    float penetration;  // Глубина проникновения
-    int bodyA;          // Индекс первого тела
-    int bodyB;          // Индекс второго тела
-} Contact;
+    vec3 point;         // Точка контакту у світових координатах
+    vec3 normal;        // Нормаль від тіла A до тіла B
+    float penetration;  // Глубина проникнення
 
-// Функция поиска столкновений между всеми телами
-int collision_detect_boxes(Contact *contacts, int maxContacts);
+    // Накопичені імпульси для warm starting і вирішення контактів
+    float normalImpulse;
+    float tangentImpulse1;
+    float tangentImpulse2;
+} ContactPoint;
+
+#define MAX_CONTACTS_PER_PAIR 8
+
+typedef struct {
+    int bodyA;
+    int bodyB;
+    ContactPoint contacts[MAX_CONTACTS_PER_PAIR];
+    int contactCount;
+    vec3 normal;        // Загальна нормаль контакту
+} ContactManifold;
+
+#define MAX_MANIFOLDS 256
+
+extern ContactManifold manifolds[MAX_MANIFOLDS];
+extern int manifoldCount;
+
+void collision_detect_all(const PotentialPair *pairs, int pairCount);
 
 #endif // COLLISION_H

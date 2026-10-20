@@ -49,5 +49,7 @@ void camera_process_mouse(float xoffset, float yoffset);
  * @param dest Масив mat4, у який буде записана результуюча матриця вигляду.
  */
 void camera_get_view_matrix(mat4 dest);
+void camera_get_position(vec3 dest);
+void camera_get_front(vec3 dest);
 
 #endif // CAMERA_H

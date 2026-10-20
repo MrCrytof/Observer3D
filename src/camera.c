@@ -82,3 +82,10 @@ void camera_get_view_matrix(mat4 dest) {
     vec3 worldUp = {0.0f, 1.0f, 0.0f};
     glm_lookat(camera.position, target, worldUp, dest);
 }
+void camera_get_position(vec3 dest) {
+    glm_vec3_copy(camera.position, dest);
+}
+
+void camera_get_front(vec3 dest) {
+    glm_vec3_copy(camera.front, dest);
+}
