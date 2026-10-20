@@ -24,7 +24,7 @@ int main(void) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow* window = glfwCreateWindow(800, 600, "Physics Engine 3D", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1600, 1200, "Physics Engine 3D", NULL, NULL);
     if (!window) {
         printf("Failed to create GLFW window\n");
         glfwTerminate();
@@ -103,7 +103,7 @@ int main(void) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         mat4 projection, view;
-        glm_perspective(glm_rad(45.0f), 800.0f / 600.0f, 0.1f, 100.0f, projection);
+        glm_perspective(glm_rad(45.0f), 1600.0f / 1200.0f, 0.1f, 100.0f, projection);
         camera_get_view_matrix(view);
 
         // Якщо твій рендерер сам проходить по масиву bodies, достатньо одного виклику:

@@ -16,7 +16,7 @@ static const vec3 LOCAL_BOX_VERTICES[8] = {
     {-0.5f,  0.5f,  0.5f}
 };
 
-static void check_vertices(int indexA, int indexB, Collider *cA, Collider *cB, ContactManifold *m, bool reverseNormal) {
+static void evaluate_contacts(int indexA, int indexB, Collider *cA, Collider *cB, ContactManifold *m, bool reverseNormal) {
     RigidBody *bA = &bodies[indexA];
     RigidBody *bB = &bodies[indexB];
 
@@ -28,15 +28,18 @@ static void check_vertices(int indexA, int indexB, Collider *cA, Collider *cB, C
     for (int v = 0; v < 8; v++) {
         if (m->contactCount >= MAX_CONTACTS_PER_PAIR) break;
 
+        // Масштабуємо локальну вершину тіла A відповідно до його розмірів
         vec3 scaledLocal;
         scaledLocal[0] = LOCAL_BOX_VERTICES[v][0] * (cA->box.halfSizes[0] * 2.0f);
         scaledLocal[1] = LOCAL_BOX_VERTICES[v][1] * (cA->box.halfSizes[1] * 2.0f);
         scaledLocal[2] = LOCAL_BOX_VERTICES[v][2] * (cA->box.halfSizes[2] * 2.0f);
 
+        // Переводимо вершину у світові координати
         vec3 worldVertex;
         glm_mat4_mulv3(rotA, scaledLocal, 1.0f, worldVertex);
         glm_vec3_add(worldVertex, bA->position, worldVertex);
 
+        // Переводимо світову вершину в локальний простір тіла B
         vec3 localToB;
         glm_vec3_sub(worldVertex, bB->position, localToB);
         vec3 vertexInB;
@@ -45,11 +48,13 @@ static void check_vertices(int indexA, int indexB, Collider *cA, Collider *cB, C
         vec3 halfB;
         glm_vec3_copy(cB->box.halfSizes, halfB);
 
+        // Задаємо невеликий епсилон для надійного захоплення контактів на межах
         float eps = 0.05f;
         if (fabsf(vertexInB[0]) <= halfB[0] + eps &&
             fabsf(vertexInB[1]) <= halfB[1] + eps &&
             fabsf(vertexInB[2]) <= halfB[2] + eps) {
 
+            // Знаходимо відстанню до кожної з 6 граней тіла B
             float dists[6] = {
                 halfB[0] - vertexInB[0], vertexInB[0] - (-halfB[0]),
                 halfB[1] - vertexInB[1], vertexInB[1] - (-halfB[1]),
@@ -65,6 +70,7 @@ static void check_vertices(int indexA, int indexB, Collider *cA, Collider *cB, C
                 }
             }
 
+            // Визначаємо локальну нормаль найближчої грані
             vec3 localNorm = {0.0f, 0.0f, 0.0f};
             if (minIdx == 0) localNorm[0] = 1.0f;
             else if (minIdx == 1) localNorm[0] = -1.0f;
@@ -73,6 +79,7 @@ static void check_vertices(int indexA, int indexB, Collider *cA, Collider *cB, C
             else if (minIdx == 4) localNorm[2] = 1.0f;
             else if (minIdx == 5) localNorm[2] = -1.0f;
 
+            // Переводимо нормаль у світові координати
             vec3 worldNorm;
             glm_mat4_mulv3(rotB, localNorm, 0.0f, worldNorm);
             glm_vec3_normalize(worldNorm);
@@ -81,6 +88,7 @@ static void check_vertices(int indexA, int indexB, Collider *cA, Collider *cB, C
                 glm_vec3_negate(worldNorm);
             }
 
+            // Зберігаємо точку контакту
             ContactPoint *cp = &m->contacts[m->contactCount];
             glm_vec3_copy(worldVertex, cp->point);
             glm_vec3_copy(worldNorm, cp->normal);
@@ -100,13 +108,9 @@ static void collide_box_box(int indexA, int indexB, Collider *cA, Collider *cB, 
     m->bodyB = indexB;
     m->contactCount = 0;
 
-    // Перевіряємо вершини A всередині B
-    check_vertices(indexA, indexB, cA, cB, m, false);
-
-    // Якщо не знайшли контактів або хочемо двосторонню перевірку — перевіряємо вершини B всередині A
-    if (m->contactCount == 0) {
-        check_vertices(indexB, indexA, cB, cA, m, true);
-    }
+    // Двостороння перевірка: збираємо точки як від A в B, так і від B в A
+    evaluate_contacts(indexA, indexB, cA, cB, m, false);
+    evaluate_contacts(indexB, indexA, cB, cA, m, true);
 }
 
 void collision_detect_all(const PotentialPair *pairs, int pairCount) {
