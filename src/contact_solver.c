@@ -5,12 +5,6 @@
 
 void contact_solver_solve(ContactManifold *manifolds, int manifoldCount, float deltaTime) {
     int iterations = 10;
-    int totalContactPoints = 0;
-
-    // Подсчет общего числа контактных точек для диагностики
-    for (int m = 0; m < manifoldCount; m++) {
-        totalContactPoints += manifolds[m].contactCount;
-    }
 
     for (int iter = 0; iter < iterations; iter++) {
         for (int m = 0; m < manifoldCount; m++) {
@@ -79,10 +73,12 @@ void contact_solver_solve(ContactManifold *manifolds, int manifoldCount, float d
                 cp->normalImpulse = fmaxf(oldImpulse + deltaImpulse, 0.0f);
                 deltaImpulse = cp->normalImpulse - oldImpulse;
 
+                // Застосування лінійних імпульсів
                 vec3 linearImpulseA;
                 glm_vec3_scale(cp->normal, deltaImpulse * bA->invMass, linearImpulseA);
                 glm_vec3_add(bA->velocity, linearImpulseA, bA->velocity);
 
+                // Застосування кутових імпульсів для A
                 vec3 rA_cross_norm_scaled;
                 glm_vec3_scale(rA_cross_n, deltaImpulse, rA_cross_norm_scaled);
                 vec3 angDeltaA;
@@ -103,26 +99,23 @@ void contact_solver_solve(ContactManifold *manifolds, int manifoldCount, float d
                     glm_vec3_sub(bB->angularVelocity, angDeltaB, bB->angularVelocity);
                 }
 
-                // Позиционная коррекция (Baumgarte)
-                float allowedPenetration = 0.01f;
-                float baumgarte = 0.2f;
+                // Позиційна корекція (Baumgarte)
+                float allowedPenetration = 0.001f;
+                float baumgarte = 0.2f; // Зменшено для більшої плавності
                 if (cp->penetration > allowedPenetration) {
                     float positionCorrection = (baumgarte / deltaTime) * (cp->penetration - allowedPenetration);
-
-                    vec3 correction;
-                    glm_vec3_scale(cp->normal, positionCorrection, correction);
 
                     float totalInvMass = bA->invMass + (bB ? bB->invMass : 0.0f);
                     if (totalInvMass > 0.0f) {
                         if (bA->type == BODY_TYPE_DYNAMIC) {
-                            vec3 posA;
-                            glm_vec3_scale(correction, -(bA->invMass / totalInvMass), posA);
-                            glm_vec3_add(bA->position, posA, bA->position);
+                            vec3 correctionA;
+                            glm_vec3_scale(cp->normal, positionCorrection * (bA->invMass / totalInvMass), correctionA);
+                            glm_vec3_add(bA->position, correctionA, bA->position);
                         }
                         if (bB && bB->type == BODY_TYPE_DYNAMIC) {
-                            vec3 posB;
-                            glm_vec3_scale(correction, (bB->invMass / totalInvMass), posB);
-                            glm_vec3_add(bB->position, posB, bB->position);
+                            vec3 correctionB;
+                            glm_vec3_scale(cp->normal, -positionCorrection * (bB->invMass / totalInvMass), correctionB);
+                            glm_vec3_add(bB->position, correctionB, bB->position);
                         }
                     }
                 }

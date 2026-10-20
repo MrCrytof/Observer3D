@@ -90,6 +90,29 @@ void renderer_init(void) {
         -0.5f,  0.5f, -0.5f,  1.0f, 0.0f, 1.0f
     };
 
+    // Вершини платформи (наприклад, сірий колір для всіх вершин)
+    float platformVertices[] = {
+        // Позиції                // Кольори (RGB)
+        -0.5f, 0.0f, -0.5f,  0.5f, 0.5f, 0.5f,
+         0.5f, 0.0f, -0.5f,  0.5f, 0.5f, 0.5f,
+         0.5f, 0.0f,  0.5f,  0.5f, 0.5f, 0.5f,
+         0.5f, 0.0f,  0.5f,  0.5f, 0.5f, 0.5f,
+        -0.5f, 0.0f,  0.5f,  0.5f, 0.5f, 0.5f,
+        -0.5f, 0.0f, -0.5f,  0.5f, 0.5f, 0.5f
+    };
+
+    glGenVertexArrays(1, &platformVAO);
+    glGenBuffers(1, &platformVBO);
+
+    glBindVertexArray(platformVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, platformVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(platformVertices), platformVertices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
     glGenVertexArrays(1, &cubeVAO);
     glGenBuffers(1, &cubeVBO);
 
@@ -101,16 +124,6 @@ void renderer_init(void) {
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
-
-    // Вершини платформи
-    float platformVertices[] = {
-        -10.0f, 0.0f, -10.0f,  0.5f, 0.5f, 0.5f,
-         10.0f, 0.0f, -10.0f,  0.5f, 0.5f, 0.5f,
-         10.0f, 0.0f,  10.0f,  0.5f, 0.5f, 0.5f,
-         10.0f, 0.0f,  10.0f,  0.5f, 0.5f, 0.5f,
-        -10.0f, 0.0f,  10.0f,  0.5f, 0.5f, 0.5f,
-        -10.0f, 0.0f, -10.0f,  0.5f, 0.5f, 0.5f
-    };
 
     glGenVertexArrays(1, &platformVAO);
     glGenBuffers(1, &platformVBO);
@@ -127,24 +140,31 @@ void renderer_init(void) {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 }
-
 void renderer_draw_scene(mat4 view, mat4 projection) {
     glUseProgram(shaderProgram);
 
     mat4 model, viewModel, mvp;
 
     // 1. Рендер платформи
-    glm_mat4_identity(model);
-    glm_mat4_mul(view, model, viewModel);
-    glm_mat4_mul(projection, viewModel, mvp);
-    glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, (float*)mvp);
+    if (bodyCount > 0 && bodies[0].type == BODY_TYPE_STATIC) {
+        glm_mat4_identity(model);
+        glm_translate(model, bodies[0].position);
 
-    glBindVertexArray(platformVAO);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
+        // Масштабуємо платформу під її фізичний розмір (напіврозміри 10, 0.5, 10 -> повний розмір 20, 1, 20)
+        vec3 scale = {20.0f, 1.0f, 20.0f};
+        glm_scale(model, scale);
 
-    // 2. Рендер усіх тіл (кубів) із фізичного движка
+        glm_mat4_mul(view, model, viewModel);
+        glm_mat4_mul(projection, viewModel, mvp);
+        glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, (float*)mvp);
+
+        glBindVertexArray(platformVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+    }
+
+    // 2. Рендер динамічних кубів
     glBindVertexArray(cubeVAO);
-    for (int i = 0; i < bodyCount; i++) {
+    for (int i = 1; i < bodyCount; i++) {
         if (!bodies[i].active) continue;
 
         glm_mat4_identity(model);

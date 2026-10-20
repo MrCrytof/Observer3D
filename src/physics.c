@@ -13,7 +13,7 @@ void physics_update(float deltaTime, float gravity) {
         rigid_body_update_world_inertia(&bodies[i]);
     }
 
-    // 2. Застосування сил (гравітація) та скидання моментів
+    // 2. Застосування гравітації до сил
     for (int i = 0; i < bodyCount; i++) {
         RigidBody *b = &bodies[i];
         if (!b->active || b->type == BODY_TYPE_STATIC) continue;
@@ -23,17 +23,7 @@ void physics_update(float deltaTime, float gravity) {
         glm_vec3_zero(b->torque);
     }
 
-    // 3. Широка фаза (Broad Phase): пошук потенційних пар
-    PotentialPair pairs[MAX_PAIRS];
-    int pairCount = broadphase_collect_pairs(pairs, MAX_PAIRS);
-
-    // 4. Вузька фаза (Narrow Phase): генерація контактних маніфолдів
-    collision_detect_all(pairs, pairCount);
-
-    // 5. Вирішення контактів (Contact Solver): імпульси та тертя
-    contact_solver_solve(manifolds, manifoldCount, deltaTime);
-
-    // 6. Інтегрування рухів (Semi-Implicit Euler)
+    // 3. Інтегрування рухів (Semi-Implicit Euler) ПЕРЕД пошуком колізій
     for (int i = 0; i < bodyCount; i++) {
         RigidBody *b = &bodies[i];
         if (!b->active || b->type == BODY_TYPE_STATIC) continue;
@@ -50,7 +40,7 @@ void physics_update(float deltaTime, float gravity) {
         glm_vec3_scale(b->velocity, deltaTime, deltaPos);
         glm_vec3_add(b->position, deltaPos, b->position);
 
-        // Углове інтегрування
+        // Кутове інтегрування
         vec3 angularAcc;
         glm_mat3_mulv(b->invWorldInertiaTensor, b->torque, angularAcc);
 
@@ -58,7 +48,6 @@ void physics_update(float deltaTime, float gravity) {
         glm_vec3_scale(angularAcc, deltaTime, deltaAngVel);
         glm_vec3_add(b->angularVelocity, deltaAngVel, b->angularVelocity);
 
-        // Оновлення орієнтації через кватерніон
         float angle = glm_vec3_norm(b->angularVelocity) * deltaTime;
         if (angle > 0.00001f) {
             vec3 axis;
@@ -71,8 +60,18 @@ void physics_update(float deltaTime, float gravity) {
             glm_quat_normalize(b->orientation);
         }
 
-        // Невелике загальне демпфування для стабільності
+        // Демпфування
         glm_vec3_scale(b->velocity, 0.995f, b->velocity);
         glm_vec3_scale(b->angularVelocity, 0.99f, b->angularVelocity);
     }
+
+    // 4. Широка фаза (Broad Phase): пошук потенційних пар після переміщення
+    PotentialPair pairs[MAX_PAIRS];
+    int pairCount = broadphase_collect_pairs(pairs, MAX_PAIRS);
+
+    // 5. Вузька фаза (Narrow Phase): генерація контактних маніфолдів
+    collision_detect_all(pairs, pairCount);
+
+    // 6. Вирішення контактів (Contact Solver): виправлення швидкостей та позицій
+    contact_solver_solve(manifolds, manifoldCount, deltaTime);
 }

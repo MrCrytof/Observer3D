@@ -16,21 +16,15 @@ static const vec3 LOCAL_BOX_VERTICES[8] = {
     {-0.5f,  0.5f,  0.5f}
 };
 
-static void collide_box_box(int indexA, int indexB, Collider *cA, Collider *cB, ContactManifold *m) {
+static void check_vertices(int indexA, int indexB, Collider *cA, Collider *cB, ContactManifold *m, bool reverseNormal) {
     RigidBody *bA = &bodies[indexA];
     RigidBody *bB = &bodies[indexB];
 
-    mat4 rotA, invRotA, rotB, invRotB;
+    mat4 rotA, rotB, invRotB;
     glm_quat_mat4(bA->orientation, rotA);
-    glm_mat4_inv(rotA, invRotA);
     glm_quat_mat4(bB->orientation, rotB);
     glm_mat4_inv(rotB, invRotB);
 
-    m->bodyA = indexA;
-    m->bodyB = indexB;
-    m->contactCount = 0;
-
-    // 1. Перевірка вершин куба A всередині куба B (нормаль від B до A)
     for (int v = 0; v < 8; v++) {
         if (m->contactCount >= MAX_CONTACTS_PER_PAIR) break;
 
@@ -51,9 +45,10 @@ static void collide_box_box(int indexA, int indexB, Collider *cA, Collider *cB, 
         vec3 halfB;
         glm_vec3_copy(cB->box.halfSizes, halfB);
 
-        if (fabsf(vertexInB[0]) <= halfB[0] &&
-            fabsf(vertexInB[1]) <= halfB[1] &&
-            fabsf(vertexInB[2]) <= halfB[2]) {
+        float eps = 0.05f;
+        if (fabsf(vertexInB[0]) <= halfB[0] + eps &&
+            fabsf(vertexInB[1]) <= halfB[1] + eps &&
+            fabsf(vertexInB[2]) <= halfB[2] + eps) {
 
             float dists[6] = {
                 halfB[0] - vertexInB[0], vertexInB[0] - (-halfB[0]),
@@ -82,10 +77,14 @@ static void collide_box_box(int indexA, int indexB, Collider *cA, Collider *cB, 
             glm_mat4_mulv3(rotB, localNorm, 0.0f, worldNorm);
             glm_vec3_normalize(worldNorm);
 
+            if (reverseNormal) {
+                glm_vec3_negate(worldNorm);
+            }
+
             ContactPoint *cp = &m->contacts[m->contactCount];
             glm_vec3_copy(worldVertex, cp->point);
             glm_vec3_copy(worldNorm, cp->normal);
-            cp->penetration = minPen;
+            cp->penetration = fmaxf(minPen, 0.001f);
             cp->normalImpulse = 0.0f;
             cp->tangentImpulse1 = 0.0f;
             cp->tangentImpulse2 = 0.0f;
@@ -94,71 +93,19 @@ static void collide_box_box(int indexA, int indexB, Collider *cA, Collider *cB, 
             m->contactCount++;
         }
     }
+}
 
-    // 2. Перевірка вершин куба B всередині куба A (нормаль від B до A, тобто інвертована від A)
-    for (int v = 0; v < 8; v++) {
-        if (m->contactCount >= MAX_CONTACTS_PER_PAIR) break;
+static void collide_box_box(int indexA, int indexB, Collider *cA, Collider *cB, ContactManifold *m) {
+    m->bodyA = indexA;
+    m->bodyB = indexB;
+    m->contactCount = 0;
 
-        vec3 scaledLocal;
-        scaledLocal[0] = LOCAL_BOX_VERTICES[v][0] * (cB->box.halfSizes[0] * 2.0f);
-        scaledLocal[1] = LOCAL_BOX_VERTICES[v][1] * (cB->box.halfSizes[1] * 2.0f);
-        scaledLocal[2] = LOCAL_BOX_VERTICES[v][2] * (cB->box.halfSizes[2] * 2.0f);
+    // Перевіряємо вершини A всередині B
+    check_vertices(indexA, indexB, cA, cB, m, false);
 
-        vec3 worldVertex;
-        glm_mat4_mulv3(rotB, scaledLocal, 1.0f, worldVertex);
-        glm_vec3_add(worldVertex, bB->position, worldVertex);
-
-        vec3 localToA;
-        glm_vec3_sub(worldVertex, bA->position, localToA);
-        vec3 vertexInA;
-        glm_mat4_mulv3(invRotA, localToA, 1.0f, vertexInA);
-
-        vec3 halfA;
-        glm_vec3_copy(cA->box.halfSizes, halfA);
-
-        if (fabsf(vertexInA[0]) <= halfA[0] &&
-            fabsf(vertexInA[1]) <= halfA[1] &&
-            fabsf(vertexInA[2]) <= halfA[2]) {
-
-            float dists[6] = {
-                halfA[0] - vertexInA[0], vertexInA[0] - (-halfA[0]),
-                halfA[1] - vertexInA[1], vertexInA[1] - (-halfA[1]),
-                halfA[2] - vertexInA[2], vertexInA[2] - (-halfA[2])
-            };
-
-            float minPen = dists[0];
-            int minIdx = 0;
-            for (int d = 1; d < 6; d++) {
-                if (dists[d] < minPen) {
-                    minPen = dists[d];
-                    minIdx = d;
-                }
-            }
-
-            vec3 localNorm = {0.0f, 0.0f, 0.0f};
-            if (minIdx == 0) localNorm[0] = 1.0f;
-            else if (minIdx == 1) localNorm[0] = -1.0f;
-            else if (minIdx == 2) localNorm[1] = 1.0f;
-            else if (minIdx == 3) localNorm[1] = -1.0f;
-            else if (minIdx == 4) localNorm[2] = 1.0f;
-            else if (minIdx == 5) localNorm[2] = -1.0f;
-
-            vec3 worldNorm;
-            glm_mat4_mulv3(rotA, localNorm, 0.0f, worldNorm);
-            glm_vec3_normalize(worldNorm);
-            glm_vec3_negate(worldNorm); // Нормаль повинна дивитися від B до A
-
-            ContactPoint *cp = &m->contacts[m->contactCount];
-            glm_vec3_copy(worldVertex, cp->point);
-            glm_vec3_copy(worldNorm, cp->normal);
-            cp->penetration = minPen;
-            cp->normalImpulse = 0.0f;
-            cp->tangentImpulse1 = 0.0f;
-            cp->tangentImpulse2 = 0.0f;
-
-            glm_vec3_copy(worldNorm, m->normal);
-            m->contactCount++;
-        }
+    // Якщо не знайшли контактів або хочемо двосторонню перевірку — перевіряємо вершини B всередині A
+    if (m->contactCount == 0) {
+        check_vertices(indexB, indexA, cB, cA, m, true);
     }
 }
 
